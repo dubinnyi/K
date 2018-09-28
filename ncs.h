@@ -1,0 +1,2 @@
+#ifndef NCS_H_INCLUDED
+#define NCS_H_INCLUDED
