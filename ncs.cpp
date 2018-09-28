@@ -2,19 +2,14 @@
 #include<set>
 #include<map>
 #include<string>
+#include<algorithm>
 
-using namespace std; 
+#include "ncs.h"
 
-class labeltype; 
 
-class spectrum {
-public:
-	string name;
-	spectrum(string sname) {
-		name = sname;
-	}
+spectrum::spectrum(string sname) { name = sname ; } 
 
-	int has_signal(labeltype label_type_1, labeltype label_type_2) {
+int spectrum::has_signal(labeltype label_type_1, labeltype label_type_2) {
 		if (name == "HSQC") {
 			return ((label_type_2.isotopes / 100) % 10);
 		}
@@ -54,23 +49,39 @@ public:
 
 			return ((label_type_2.isotopes / 100) % 10)*k * ((label_type_2.isotopes % 10));
 		}
-
-		
-
 	}
 
 
-};
+labeltype::labeltype(void) {
+	this->name = "X";
+	this->isotopes = 0;
+}
 
-class labeltype {
-public:
-	string name;
-	int  isotopes;
-	labeltype(string lname,int  lisotopes) {
+labeltype::labeltype(const labeltype& t) {
+  this->name = t.name;
+  this->isotopes = t.isotopes;
+}
+
+labeltype::labeltype(string lname,int  lisotopes) {
 		name = lname;
 		isotopes = lisotopes; 
 	}
-};
+
+bool labeltype::operator<(const labeltype& t2) {
+	return ( this->name < t2.name );
+}
+
+bool operator<(const labeltype& t1, const labeltype& t2) {
+	return ( t1.name < t2.name );
+}
+
+bool operator==(const labeltype& t1, const string& s2) {
+	return ( t1.name == s2 );
+}
+
+bool operator==(const string& s1, const labeltype& t2) {
+	return ( s1 == t2.name ) ;
+}
 
 class constants {
 	constants() {
@@ -95,88 +106,76 @@ class constants {
 	}
 };
 
-class NCS {
-public:
-	const vector <string> NITRO_TYPES = {"N", "D", "S", "T"};
-	string name;
-	vector<spectrum>spec_list;
-	vector<labeltype> label_types;
-	bool deuterated;
-	map<string, labeltype> label_dict;
-	vector <string> letters; 
-	//vector <> spectra_numbers; 
-	map<labeltype, int> label_power; 
-	map <labeltype, map <labeltype, string>> codes_dict;
-	vector <vector <int>> vectors;
+NCS::NCS(string name_ncs, vector<spectrum>spectra_list_ncs, vector<labeltype> label_types_ncs, bool deuterated_ncs) 
+{
+	name = name_ncs;
+	spec_list = spectra_list_ncs;
+	label_types = label_types_ncs;
+	deuterated = deuterated_ncs;
+	for (labeltype l : label_types) {
+		label_dict[l.name] = l;
+	}
+	letters = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"};
+	for (spectrum s : spec_list) {
+		//vectors.push_back([0]);
+		vectors.push_back({0});
+	}
+  make_coding_table();
+}
 
-	//name, spectra_list, label_types, deuterated = False)
-	NCS(string name_ncs, vector<spectrum>spectra_list_ncs, vector<labeltype> label_types_ncs, bool deuterated_ncs = 0) {
-		name = name_ncs;
-		spec_list = spectra_list_ncs;
-		label_types = label_types_ncs;
-		deuterated = deuterated_ncs;
-		for (labeltype l : label_types) {
-			label_dict[l.name] = l;
-		}
-		letters = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"};
-		for (spectrum s : spec_list) {
-			//vectors.push_back([0]);
-			vectors.push_back({0});
+void NCS::make_coding_table(void) 
+{
+	vector <vector <string>> codes_table;
+	for (int j = 0; j < label_types.size(); j++) {
+		codes_table.push_back( vector<string>() );
+		for (int i = 0; i < label_types.size(); i++) {
+			codes_table[j].push_back({ "0" });
 		}
 	}
+	vector<int> vec;
+	vector<string> result;
+	set<string> s;
+	int power;
+	int code;
+	//labeltype label_2, label_1;
+	for (int i = 0; i < label_types.size(); i++) {
+		labeltype label_2 = label_types[i];
 
-	void make_coding_table() {
-		vector <vector <string>> codes_table;
 		for (int j = 0; j < label_types.size(); j++) {
-			for (int i = 0; i < label_types.size(); i++) {
-				codes_table.push_back({ "0" });
+			labeltype label_1 = label_types[j];
+			vec = {};
+			for (spectrum spect : spec_list) {
+				vec.push_back(spect.has_signal(label_1, label_2));
+			}
+			if (find(vectors.begin(), vectors.end(), vec) != vectors.end()) {
+				code = distance(vectors.begin(), find(vectors.begin(), vectors.end(), vec));
+			}
+			else {
+				code = vectors.size();
+				vectors.push_back(vec);
+			}
+			if (code > 9) {
+				codes_table[j][i] = letters[code - 10];
+			}
+			else {
+				codes_table[j][i] = to_string(code);
 			}
 		}
-		vector<int> vec;
-		vector<string> result;
-		set<string> s;
-		int power;
-		int code;
-		//labeltype label_2, label_1;
-		for (int i = 0; i < label_types.size(); i++) {
-			labeltype label_2 = label_types[i];
+	}
+	for (int i = 0; i < label_types.size(); i++) {
+		result = {};
+		for (vector <string> row : codes_table) {
+			result.push_back(row[i]);
+		}
+		set <string> s(result.begin(), result.end());
+		power = s.size();
+		label_power[label_types[i]] = power;
+		if (power == 1 and find(NITRO_TYPES.begin(), NITRO_TYPES.end(), label_types[i]) != NITRO_TYPES.end()) {
 
-			for (int j = 0; j < label_types.size(); j++) {
-				labeltype label_1 = label_types[j];
-				vec = {};
-				for (spectrum spect : spec_list) {
-					vec.push_back(spect.has_signal(label_1, label_2));
-				}
-				if (find(vectors.begin(), vectors.end(), vec) != vectors.end()) {
-					code = distance(vectors.begin(), find(vectors.begin(), vectors.end(), vec));
-				}
-				else {
-					code = vectors.size();
-					vectors.push_back(vec);
-				}
-				if (code > 9) {
-					codes_table[j][i] = letters[code - 10];
-				}
-				else {
-					codes_table[j][i] = to_string(code);
-				}
-			}
+			throw ("Error");
 		}
-		for (int i = 0; i < label_types.size(); i++) {
-			result = {};
-			for (vector <string> row : codes_table) {
-				result.push_back(row[i]);
-			}
-			set <string> s(result.begin(), result.end());
-			power = s.size();
-			label_power[label_types[i]] = power;
-			if (power == 1 and find(NITRO_TYPES.begin(), NITRO_TYPES.end(), label_types[i]) != NITRO_TYPES.end()) {
-
-				throw ("Error");
-			}
-		}
-		map <labeltype, string> subdict;
-		for (int i = 0; i < label_types.size(); i++) {
+	}
+	for (int i = 0; i < label_types.size(); i++) {
 			labeltype  label_1 = label_types[i];
 
 			for (int j = 0; j < label_types.size(); j++) {
@@ -185,11 +184,6 @@ public:
 		}
 			codes_dict[label_1] = subdict;
 	}
-
-	}
-
+}
 
 
-};
-
-#endif // NCS_H_INCLUDED
